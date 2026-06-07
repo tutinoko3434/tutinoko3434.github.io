@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Private Timeline</title>
+    <style>
+        :root {
+            --bg-color: #f5f8fa;
+            --card-color: #ffffff;
+            --text-color: #0f1419;
+            --accent-color: #1d9bf0;
+            --border-color: #eff3f4;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container { width: 100%; max-width: 600px; }
+        h1 { font-size: 20px; margin-bottom: 20px; text-align: center; }
+        .timeline { display: flex; flex-direction: column; gap: 12px; }
+        .tweet { background: var(--card-color); padding: 15px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .tweet-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+        .account-name { font-weight: bold; font-size: 15px; }
+        .timestamp { color: #536471; font-size: 13px; }
+        .tweet-text { font-size: 15px; white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
+        .tweet-image { width: 100%; max-height: 400px; object-fit: cover; border-radius: 12px; margin-top: 10px; border: 1px solid var(--border-color); }
+        
+        /* 管理画面エリア */
+        .admin-section { margin-top: 50px; padding-top: 20px; border-top: 2px dashed #ccc; width: 100%; max-width: 600px; }
+        .post-form { background: #fff; padding: 15px; border-radius: 16px; border: 1px solid var(--border-color); }
+        textarea, input[type="text"], input[type="password"] { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 8px; box-sizing: border-box; }
+        .form-controls { display: flex; justify-content: space-between; align-items: center; }
+        button { background-color: var(--accent-color); color: white; border: none; padding: 8px 16px; border-radius: 9999px; font-weight: bold; cursor: pointer; }
+        #image-preview { max-width: 100%; max-height: 150px; display: none; margin-bottom: 10px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>@my_space のタイムライン</h1>
+    <div id="timeline" class="timeline">読み込み中...</div>
+</div>
+
+<div class="admin-section">
+    <h3>🔒 投稿コントロール（あなた専用）</h3>
+    <div class="post-form">
+        <input type="password" id="gh-token" placeholder="GitHub個人アクセストークンを入力">
+        <textarea id="tweet-text" rows="3" placeholder="いまどうしてる？"></textarea>
+        <img id="image-preview" alt="プレビュー">
+        <div class="form-controls">
+            <label style="cursor:pointer; color:var(--accent-color);">
+                📷 画像添付
+                <input type="file" id="tweet-image" accept="image/*" style="display:none;">
+            </label>
+            <button onclick="submitTweet()">GitHubへ投稿</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 💡 あなたのGitHub情報をここに正確に入力してください
+    const GITHUB_USER = "tutinoko3434";
+    const GITHUB_REPO = "tutinoko3434.github.io";
+    const FILE_PATH = "log.json"; 
+    const ACCOUNT_NAME = "@my_space";
+
+    let base64Image = "";
+
+    // 1. ページ読み込み時にJSONデータを取得して表示
+    window.onload = async function() {
+        // キャッシュを回避するためにタイムスタンプを付与してGET
+        try {
+            const res = await fetch(`./${FILE_PATH}?t=${Date.now()}`);
+            const tweets = await res.json();
+            displayTweets(tweets);
+        } catch (e) {
+            document.getElementById('timeline').innerText = "投稿がまだありません。";
+        }
+        
+        // トークンをブラウザに記憶させておく（毎回入力する手間を省くため）
+        if(localStorage.getItem('saved_token')) {
+            document.getElementById('gh-token').value = localStorage.getItem('saved_token');
+        }
+    };
+
+    function displayTweets(tweets) {
+        const timeline = document.getElementById('timeline');
+        timeline.innerHTML = "";
+        if(tweets.length === 0) { timeline.innerText = "投稿はありません。"; return; }
+
+        tweets.forEach(tweet => {
+            const tweetEl = document.createElement('div');
+            tweetEl.className = 'tweet';
+            let imgHtml = tweet.image ? `<img src="${tweet.image}" class="tweet-image">` : "";
+            tweetEl.innerHTML = `
+                <div class="tweet-header">
+                    <span class="account-name">${tweet.account}</span>
+                    <span class="timestamp">${tweet.time}</span>
+                </div>
+                <div class="tweet-text">${escapeHTML(tweet.text)}</div>
+                ${imgHtml}
+            `;
+            timeline.appendChild(tweetEl);
+        });
+    }
+
+    // 画像選択時の処理
+    document.getElementById('tweet-image').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            base64Image = event.target.result;
+            const preview = document.getElementById('image-preview');
+            preview.src = base64Image;
+            preview.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 2. GitHub APIを使ってJSONを更新するメイン処理
+    async function submitTweet() {
+        const token = document.getElementById('gh-token').value.trim();
+        const text = document.getElementById('tweet-text').value.trim();
+
+        if (!token) { alert("GitHubトークンを入力してください。"); return; }
+        if (!text && !base64Image) { alert("内容を入力してください。"); return; }
+
+        // トークンをローカルストレージに保存（次回用）
+        localStorage.setItem('saved_token', token);
+
+        // 日時生成
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+        const newTweet = {
+            account: ACCOUNT_NAME,
+            text: text,
+            image: base64Image,
+            time: timestamp
+        };
+
+        try {
+            // ① 現在のGitHub上のファイルの最新状態（SHAハッシュ）を取得する
+            const url = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${FILE_PATH}`;
+            const fileRes = await fetch(url, {
+                headers: { "Authorization": `token ${token}` }
+            });
+            
+            let sha = "";
+            let currentTweets = [];
+
+            if (fileRes.status === 200) {
+                const fileData = await fileRes.json();
+                sha = fileData.sha; // 更新に必要なID
+                // GitHubから取得した中身（Base64）をデコードしてJSONに戻す
+                currentTweets = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
+            }
+
+            // ② 新しい投稿を先頭に追加
+            currentTweets.unshift(newTweet);
+
+            // ③ GitHubに送るために再度Base64エンコード
+            const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentTweets, null, 2))));
+
+            // ④ APIでGitHubのファイルを書き換え（コミット）
+            const commitRes = await fetch(url, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `token ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: "📬 New post via Web Admin",
+                    content: updatedContent,
+                    sha: sha
+                })
+            });
+
+            if (commitRes.status === 200 || commitRes.status === 201) {
+                alert("投稿が成功しました！GitHub Pagesの反映に1〜2分かかります。");
+                // 入力欄をクリア
+                document.getElementById('tweet-text').value = "";
+                document.getElementById('image-preview').style.display = "none";
+                base64Image = "";
+                // 簡易的にローカルの表示だけすぐ更新
+                displayTweets(currentTweets);
+            } else {
+                const errData = await commitRes.json();
+                alert("エラーが発生しました: " + errData.message);
+            }
+
+        } catch (error) {
+            console.error(error);
+            alert("通信エラーが発生しました。");
+        }
+    }
+
+    function escapeHTML(str) {
+        return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+    }
+</script>
+</body>
+</html>
