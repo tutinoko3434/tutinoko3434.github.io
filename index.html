@@ -44,7 +44,7 @@
 <body>
 
 <div class="container">
-    <h1>@my_space のタイムライン</h1>
+    <h1>@tutinoko3434 のタイムライン</h1>
     <div id="timeline" class="timeline">読み込み中...</div>
 </div>
 
@@ -65,17 +65,17 @@
 </div>
 
 <script>
-    // 💡 あなたのGitHub情報をここに正確に入力してください
+    
     const GITHUB_USER = "tutinoko3434";
     const GITHUB_REPO = "tutinoko3434.github.io";
     const FILE_PATH = "log.json"; 
-    const ACCOUNT_NAME = "@my_space";
+    const ACCOUNT_NAME = "@tutinoko3434";
 
     let base64Image = "";
 
-    // 1. ページ読み込み時にJSONデータを取得して表示
+    
     window.onload = async function() {
-        // キャッシュを回避するためにタイムスタンプを付与してGET
+        
         try {
             const res = await fetch(`./${FILE_PATH}?t=${Date.now()}`);
             const tweets = await res.json();
@@ -84,7 +84,7 @@
             document.getElementById('timeline').innerText = "投稿がまだありません。";
         }
         
-        // トークンをブラウザに記憶させておく（毎回入力する手間を省くため）
+        
         if(localStorage.getItem('saved_token')) {
             document.getElementById('gh-token').value = localStorage.getItem('saved_token');
         }
@@ -111,7 +111,7 @@
         });
     }
 
-    // 画像選択時の処理
+    
     document.getElementById('tweet-image').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -125,7 +125,7 @@
         reader.readAsDataURL(file);
     });
 
-    // 2. GitHub APIを使ってJSONを更新するメイン処理
+    
     async function submitTweet() {
         const token = document.getElementById('gh-token').value.trim();
         const text = document.getElementById('tweet-text').value.trim();
@@ -133,10 +133,10 @@
         if (!token) { alert("GitHubトークンを入力してください。"); return; }
         if (!text && !base64Image) { alert("内容を入力してください。"); return; }
 
-        // トークンをローカルストレージに保存（次回用）
+        
         localStorage.setItem('saved_token', token);
 
-        // 日時生成
+        
         const now = new Date();
         const timestamp = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 
@@ -148,7 +148,7 @@
         };
 
         try {
-            // ① 現在のGitHub上のファイルの最新状態（SHAハッシュ）を取得する
+            
             const url = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${FILE_PATH}`;
             const fileRes = await fetch(url, {
                 headers: { "Authorization": `token ${token}` }
@@ -159,18 +159,18 @@
 
             if (fileRes.status === 200) {
                 const fileData = await fileRes.json();
-                sha = fileData.sha; // 更新に必要なID
-                // GitHubから取得した中身（Base64）をデコードしてJSONに戻す
+                sha = fileData.sha; 
+                
                 currentTweets = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
             }
 
-            // ② 新しい投稿を先頭に追加
+            
             currentTweets.unshift(newTweet);
 
-            // ③ GitHubに送るために再度Base64エンコード
+            
             const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentTweets, null, 2))));
 
-            // ④ APIでGitHubのファイルを書き換え（コミット）
+            
             const commitRes = await fetch(url, {
                 method: "PUT",
                 headers: {
@@ -186,11 +186,11 @@
 
             if (commitRes.status === 200 || commitRes.status === 201) {
                 alert("投稿が成功しました！GitHub Pagesの反映に1〜2分かかります。");
-                // 入力欄をクリア
+                
                 document.getElementById('tweet-text').value = "";
                 document.getElementById('image-preview').style.display = "none";
                 base64Image = "";
-                // 簡易的にローカルの表示だけすぐ更新
+                
                 displayTweets(currentTweets);
             } else {
                 const errData = await commitRes.json();
